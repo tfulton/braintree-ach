@@ -1,0 +1,237 @@
+<html>
+
+<head>
+  <title>Braintree Client SDK Test</title>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.js"></script>
+
+  <script src="https://js.braintreegateway.com/web/3.79.1/js/client.min.js"></script>
+  <script src="https://js.braintreegateway.com/web/3.79.1/js/us-bank-account.min.js"></script>
+  <style>
+    body {
+      padding: 10px;
+      font: 14px "Lucida Grande", Helvetica, Arial, sans-serif;
+    }
+
+    a {
+      color: #00B7FF;
+    }
+
+    input[type="text"],
+    .hosted-field {
+      border: 1px solid #3A3A3A;
+      -webkit-border-radius: 3px;
+      border-radius: 3px;
+      height: 25px;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- BEGIN: MAIN CONTENT -->
+  <div class="ui container" id="mainSection">
+    <p></p>
+    <h3 class="header">Braintree USBankAccount w/JSv3</h3>
+    <div class="ui top attached tabular menu">
+      <a class="item active" data-tab="first" id="stepOne">Begin</a>
+      <a class="item" data-tab="second" id="stepTwo">Review</a>
+    </div>
+
+    <div class="ui bottom attached tab segment active">
+
+      <div class="ui negative message hidden" id="errorMessage">
+        <i class="close icon"></i>
+        <div class="header" id="errorMessageHeader"></div>
+        <p id="errorMessageContent"></p>
+      </div>
+
+      <div class="ui message" id="infoMessage">
+        <div class="header"></div>
+        <p></p>
+      </div>
+
+      <!-- PAYMENT FORM -->
+      <div class="ui container" id="paymentForm">
+        <form id="checkout" class="ui form">
+          <div class="fields">
+            <div class="seven wide field">
+              <label>Account #</label>
+              <input class="hosted-field" value="1000000000" id="accountNumber">
+            </div>
+            <div class="seven wide field">
+              <label>Routing #</label>
+              <input class="hosted-field" value="011000015" id="routingNumber">
+            </div>
+          </div>
+
+          <div class="fields">
+            <div class="seven wide field">
+              <label>Firstname</label>
+              <input class="hosted-field" value="Bipsy" id="firstName">
+            </div>
+            <div class="seven wide field">
+              <label>Lastname</label>
+              <input class="hosted-field" value="Bannon" id="lastName">
+            </div>
+          </div>
+
+          <div class="fields">
+            <div class="seven wide field">
+              <label>Address1</label>
+              <input class="hosted-field" value="123 Townsend Street" id="address1">
+            </div>
+            <div class="seven wide field">
+              <label>Address2</label>
+              <input class="hosted-field" value="6th Floor" id="address2">
+            </div>
+          </div>
+          <div class="fields">
+            <div class="seven wide field">
+              <label>City</label>
+              <input class="hosted-field" value="San Francisco" id="locality">
+            </div>
+            <div class="two wide field">
+              <label>State</label>
+              <input class="hosted-field" value="CA" id="region">
+            </div>
+            <div class="three wide field">
+              <label>Zip</label>
+              <input class="hosted-field" value="94107" id="postalCode">
+            </div>
+          </div>
+
+          <div class="seven wide field">
+            <button class="ui primary button" id="submit-button">Pay</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- RESPONSE PAYLOAD WE CAN PUT HERE -->
+      <div class="ui divider"></div>
+      <div class="title">
+        Response
+      </div>
+      <div class="ui segment" id="responsePayload"></div>
+    </div>
+
+  </div>
+  <!-- END: MAIN CONTENT -->
+
+  <script>
+    //////////////////////////////////////////////////////////////////////
+    // BULK OF OUR INTEGTRATION WORK IS IN THIS SECTION
+    //////////////////////////////////////////////////////////////////////
+    const uri = "/token/LOB-USD"
+    $.ajax({
+      url: uri,
+      type: "GET",
+      crossDomain: true,
+      async: false,
+      success: function (result) {
+        console.log("result: ", result);
+        braintree.client
+          .create({
+            authorization: result // using the client token received in the ajax call
+          })
+          .then(function (clientInstance) {
+            // our Braintree client is ready for action
+            console.log("Braintree client available and ready.");
+            return braintree.usBankAccount.create({ client: clientInstance });
+          })
+          .then(function (usBankAccountInstance) {
+            console.log("We have a hosted field instance.");
+
+            $("#submit-button").click(function (event) {
+              console.log("Let's submit this thing!");
+              event.preventDefault();
+
+              // grab the bank account info
+              let bankDetails = {
+                accountNumber: $('#accountNumber').val(),
+                routingNumber: $('#routingNumber').val(),
+                accountType: 'checking',
+                ownershipType: 'personal',
+                billingAddress: {
+                  streetAddress: $('#address1').val(),
+                  extendedAddress: $('#address2').val(),
+                  locality: $('#locality').val(),
+                  region: $('#region').val(),
+                  postalCode: $('#postalCode').val()
+                }
+              };
+
+              // tokenize the bank account info
+              console.log(`bankDetails: ${JSON.stringify(bankDetails, null, 4)}`);
+              usBankAccountInstance.tokenize({
+                bankDetails: bankDetails, // or bankLogin: bankLogin
+                mandateText: 'By clicking ["Checkout"], I authorize Braintree, a service of PayPal, on behalf of [your business name here] (i) to verify my bank account information using bank information and consumer reports and (ii) to debit my bank account.'
+              }).then(function (tokenizeEtokenizedPayload) {
+                // hide form and update the tabs
+                $("#paymentForm").hide();
+                $("#stepOne").removeClass("active");
+                $("#stepTwo").addClass("active");
+
+                // show a confirmation to the user
+                presentInfoMessage(
+                  "Great!",
+                  "Sucessfully tokenized the payment data and retreived the payload, including nonce."
+                );
+
+                $("#responsePayload").html(
+                  "<pre>" + JSON.stringify(payload, null, 1) + "</pre>"
+                );
+              }).catch(function(error){
+                console.log('Error in tokenization: ', error);
+                presentError('Tokenization Error', error);
+              });
+            });
+          })
+          .catch(function (usBankAccountError) {
+            console.error("USBankAccount related error: ", usBankAccountError);
+            return;
+          })
+          .catch(function (clientErr) {
+            console.error("Error creating client:", clientErr);
+            return;
+          });
+      },
+      error: function (error) {
+        console.log("Error in ajax call: ", error);
+      }
+    });
+
+    //////////////////////////////////////////////////////////////////////
+    // MISC PAGE PRESENTATION CODE
+    //////////////////////////////////////////////////////////////////////
+    // 1) set the info message and present the payload for the user to see if they choose
+    presentInfoMessage(
+      "Begin",
+      "Click a button and the JavaScript SDK initiates a payment."
+    );
+
+    //////////////////////////////////////////////////////////////////////
+    // SOME UTILITY FUNCTIONS TO HELP OUR PAGE PRESENTATION
+    //////////////////////////////////////////////////////////////////////
+    function presentError(header = "General Error", error, debug = false) {
+      $("#errorMessageHeader").html(header);
+      $("#errorMessageContent").html(error.message);
+      if (debug) {
+        $("#errorStack").html(error.stack);
+      }
+      $("#errorMessage").show();
+    }
+
+    function presentInfoMessage(header, message) {
+      $("#infoMessage .header").html(header);
+      $("#infoMessage p").html(message);
+    }
+
+    $(".message .close").on("click", function () {
+      $("#errorMessage").hide();
+    });
+
+  </script>
+</body>
+
+</html>
